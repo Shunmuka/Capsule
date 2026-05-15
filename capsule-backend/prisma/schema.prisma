@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  username      String
+  email         String
+  password_hash String
+  createdAt     DateTime @default(now())
+
+  ownedCapsules  Capsule[] @relation("CapsuleOwner")
+  memberCapsules Capsule[] @relation("CapsuleMembers")
+  uploadedPhotos Photo[]   @relation("PhotoUploader")
+}
+
+model Capsule {
+  id         String   @id @default(uuid())
+  title      String
+  revealAt   DateTime
+  ownerId    String
+  isRevealed Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  owner   User    @relation("CapsuleOwner", fields: [ownerId], references: [id])
+  members User[]  @relation("CapsuleMembers")
+  photos  Photo[]
+
+  @@index([ownerId])
+  @@index([revealAt, isRevealed])
+}
+
+model Photo {
+  id         String   @id @default(uuid())
+  capsuleId  String
+  uploaderId String
+  s3_url     String
+  createdAt  DateTime @default(now())
+
+  capsule  Capsule @relation(fields: [capsuleId], references: [id])
+  uploader User    @relation("PhotoUploader", fields: [uploaderId], references: [id])
+
+  @@index([capsuleId])
+  @@index([uploaderId])
+}
