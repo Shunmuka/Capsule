@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Capsule User Registration Test</title>
+    <title>Capsule Auth Test UI</title>
     <style>
       :root {
         color-scheme: light;
@@ -21,9 +21,7 @@
       body {
         min-height: 100vh;
         margin: 0;
-        display: grid;
-        place-items: center;
-        padding: 32px 16px;
+        padding: 36px 16px;
         background:
           linear-gradient(135deg, rgba(35, 117, 94, 0.12), transparent 38%),
           linear-gradient(315deg, rgba(48, 99, 150, 0.14), transparent 42%),
@@ -31,7 +29,8 @@
       }
 
       main {
-        width: min(100%, 480px);
+        width: min(100%, 960px);
+        margin: 0 auto;
       }
 
       .panel {
@@ -42,10 +41,19 @@
         padding: 28px;
       }
 
-      h1 {
-        margin: 0 0 6px;
-        font-size: 1.45rem;
+      h1,
+      h2 {
+        margin: 0;
         line-height: 1.25;
+      }
+
+      h1 {
+        font-size: 1.6rem;
+      }
+
+      h2 {
+        margin: 0 0 6px;
+        font-size: 1rem;
       }
 
       p {
@@ -54,8 +62,23 @@
         line-height: 1.5;
       }
 
+      .forms {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px;
+      }
+
+      .section,
       form {
         display: grid;
+      }
+
+      .section {
+        align-content: start;
+        gap: 14px;
+      }
+
+      form {
         gap: 16px;
       }
 
@@ -105,6 +128,28 @@
         opacity: 0.72;
       }
 
+      .profile-actions {
+        margin-top: 24px;
+        padding-top: 22px;
+        border-top: 1px solid #e3ebef;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .token-state {
+        margin: 0;
+        font-size: 0.9rem;
+      }
+
+      .profile-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
       pre {
         min-height: 96px;
         margin: 18px 0 0;
@@ -119,56 +164,127 @@
         white-space: pre-wrap;
         word-break: break-word;
       }
+
+      @media (max-width: 760px) {
+        .forms {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
     <main>
-      <section class="panel" aria-labelledby="registration-title">
-        <h1 id="registration-title">Create Test User</h1>
-        <p>Send a registration request to the local Capsule API.</p>
+      <section class="panel" aria-labelledby="page-title">
+        <h1 id="page-title">Capsule Auth Tester</h1>
+        <p>Create a user, log in, save the JWT, and fetch the protected profile.</p>
 
-        <form id="registration-form">
-          <label>
-            Username
-            <input id="username" name="username" type="text" autocomplete="username" required />
-          </label>
+        <div class="forms">
+          <section class="section" aria-labelledby="registration-title">
+            <div>
+              <h2 id="registration-title">Create User</h2>
+              <p>POST /api/v1/users</p>
+            </div>
 
-          <label>
-            Email
-            <input id="email" name="email" type="email" autocomplete="email" required />
-          </label>
+            <form id="registration-form">
+              <label>
+                Username
+                <input id="username" name="username" type="text" autocomplete="username" required />
+              </label>
 
-          <label>
-            Password
-            <input id="password" name="password" type="password" autocomplete="new-password" required />
-          </label>
+              <label>
+                Email
+                <input id="email" name="email" type="email" autocomplete="email" required />
+              </label>
 
-          <button type="submit">Create User</button>
-        </form>
+              <label>
+                Password
+                <input id="password" name="password" type="password" autocomplete="new-password" required />
+              </label>
+
+              <button type="submit">Create User</button>
+            </form>
+          </section>
+
+          <section class="section" aria-labelledby="login-title">
+            <div>
+              <h2 id="login-title">Login</h2>
+              <p>POST /api/v1/login</p>
+            </div>
+
+            <form id="login-form">
+              <label>
+                Email
+                <input id="login-email" name="email" type="email" autocomplete="email" required />
+              </label>
+
+              <label>
+                Password
+                <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+              </label>
+
+              <button type="submit">Log In</button>
+            </form>
+          </section>
+        </div>
+
+        <div class="profile-actions">
+          <p class="token-state" id="token-state">Token: not stored</p>
+          <div class="profile-buttons">
+            <button id="profile-button" type="button">Get My Profile</button>
+            <button id="logout-button" type="button">Log Out</button>
+          </div>
+        </div>
 
         <pre id="response-output">{}</pre>
       </section>
     </main>
 
     <script>
-      const form = document.querySelector("#registration-form");
+      const API_BASE_URL = "http://localhost:3000";
+      const registrationForm = document.querySelector("#registration-form");
+      const loginForm = document.querySelector("#login-form");
+      const profileButton = document.querySelector("#profile-button");
+      const logoutButton = document.querySelector("#logout-button");
       const output = document.querySelector("#response-output");
-      const button = form.querySelector("button");
+      const tokenState = document.querySelector("#token-state");
 
-      form.addEventListener("submit", async (event) => {
+      const showOutput = (value) => {
+        output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      };
+
+      const updateTokenState = () => {
+        const token = localStorage.getItem("jwt_token");
+        tokenState.textContent = token ? "Token: stored in localStorage" : "Token: not stored";
+      };
+
+      const parseJsonResponse = async (response) => {
+        const text = await response.text();
+
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          return {
+            success: false,
+            error: text || "Response was not valid JSON.",
+          };
+        }
+      };
+
+      registrationForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
+        const button = registrationForm.querySelector("button");
         const payload = {
-          username: form.username.value,
-          email: form.email.value,
-          password: form.password.value,
+          username: registrationForm.username.value,
+          email: registrationForm.email.value,
+          password: registrationForm.password.value,
         };
 
         button.disabled = true;
-        output.textContent = "Submitting...";
+        showOutput("Creating user...");
 
         try {
-          const response = await fetch("http://localhost:3000/api/v1/users", {
+          const response = await fetch(`${API_BASE_URL}/api/v1/users`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -176,21 +292,98 @@
             body: JSON.stringify(payload),
           });
 
-          const data = await response.json();
-          output.textContent = JSON.stringify(data, null, 2);
+          const data = await parseJsonResponse(response);
+          showOutput(data);
         } catch (error) {
-          output.textContent = JSON.stringify(
-            {
-              success: false,
-              error: error instanceof Error ? error.message : "Request failed",
-            },
-            null,
-            2,
-          );
+          showOutput({
+            success: false,
+            error: error instanceof Error ? error.message : "Request failed",
+          });
         } finally {
           button.disabled = false;
         }
       });
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const button = loginForm.querySelector("button");
+        const payload = {
+          email: loginForm.email.value,
+          password: loginForm.password.value,
+        };
+
+        button.disabled = true;
+        showOutput("Logging in...");
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/v1/login`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await parseJsonResponse(response);
+
+          if (response.ok && data.token) {
+            localStorage.setItem("jwt_token", data.token);
+            updateTokenState();
+          }
+
+          showOutput(data);
+        } catch (error) {
+          showOutput({
+            success: false,
+            error: error instanceof Error ? error.message : "Request failed",
+          });
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      profileButton.addEventListener("click", async () => {
+        const token = localStorage.getItem("jwt_token");
+
+        if (token === null) {
+          showOutput({
+            success: false,
+            error: "Access Denied: Please log in first.",
+          });
+          return;
+        }
+
+        profileButton.disabled = true;
+        showOutput("Fetching profile...");
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          const data = await parseJsonResponse(response);
+          showOutput(data);
+        } catch (error) {
+          showOutput({
+            success: false,
+            error: error instanceof Error ? error.message : "Request failed",
+          });
+        } finally {
+          profileButton.disabled = false;
+        }
+      });
+
+      logoutButton.addEventListener("click", () => {
+        localStorage.removeItem("jwt_token");
+        updateTokenState();
+        showOutput("Logged out successfully. Token removed from storage.");
+      });
+
+      updateTokenState();
     </script>
   </body>
 </html>
