@@ -30,6 +30,7 @@ model Capsule {
   id         String   @id @default(uuid())
   title      String
   revealAt   DateTime
+  imageUrl   String?
   ownerId    String
   isRevealed Boolean  @default(false)
   createdAt  DateTime @default(now())
