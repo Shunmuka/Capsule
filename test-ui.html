@@ -90,7 +90,8 @@
         color: #2c3a49;
       }
 
-      input {
+      input,
+      textarea {
         width: 100%;
         border: 1px solid #c8d4dc;
         border-radius: 6px;
@@ -101,7 +102,13 @@
         outline: none;
       }
 
-      input:focus {
+      textarea {
+        min-height: 112px;
+        resize: vertical;
+      }
+
+      input:focus,
+      textarea:focus {
         border-color: #2b876e;
         box-shadow: 0 0 0 3px rgba(43, 135, 110, 0.16);
       }
@@ -148,6 +155,48 @@
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
+      }
+
+      .capsule-section {
+        margin-top: 24px;
+        padding-top: 22px;
+        border-top: 1px solid #e3ebef;
+      }
+
+      .dashboard-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      #capsule-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .capsule-card {
+        border: 1px solid #d7e1e7;
+        border-radius: 8px;
+        padding: 16px;
+        background: #fbfdfe;
+      }
+
+      .capsule-card h3 {
+        margin: 0 0 8px;
+        font-size: 1rem;
+        color: #18212f;
+      }
+
+      .capsule-card p {
+        margin: 0;
+      }
+
+      .capsule-card .capsule-date {
+        margin-bottom: 10px;
+        font-size: 0.88rem;
+        font-weight: 650;
+        color: #2b876e;
       }
 
       pre {
@@ -235,6 +284,50 @@
           </div>
         </div>
 
+        <section class="capsule-section section" aria-labelledby="capsule-title">
+          <div>
+            <h2 id="capsule-title">Create a Time Capsule</h2>
+            <p>POST /api/v1/capsules</p>
+          </div>
+
+          <form id="capsule-form">
+            <label>
+              Title
+              <input id="capsule-title-input" name="title" type="text" required />
+            </label>
+
+            <label>
+              Content
+              <textarea id="capsule-content" name="content" required></textarea>
+            </label>
+
+            <label>
+              Unlock Date
+              <input id="capsule-unlock-date" name="unlockDate" type="datetime-local" required />
+            </label>
+
+            <label>
+              Attach a Memory (Image)
+              <input type="file" id="capsule-image" name="image" accept="image/*" />
+            </label>
+
+            <button type="submit">Seal Capsule</button>
+          </form>
+        </section>
+
+        <section class="capsule-section section" aria-labelledby="dashboard-title">
+          <div>
+            <h2 id="dashboard-title">My Time Capsules Dashboard</h2>
+            <p>GET /api/v1/capsules</p>
+          </div>
+
+          <div class="dashboard-actions">
+            <button id="load-capsules-button" type="button">Load My Capsules</button>
+          </div>
+
+          <div id="capsule-list"></div>
+        </section>
+
         <pre id="response-output">{}</pre>
       </section>
     </main>
@@ -243,8 +336,11 @@
       const API_BASE_URL = "http://localhost:3000";
       const registrationForm = document.querySelector("#registration-form");
       const loginForm = document.querySelector("#login-form");
+      const capsuleForm = document.querySelector("#capsule-form");
       const profileButton = document.querySelector("#profile-button");
       const logoutButton = document.querySelector("#logout-button");
+      const loadCapsulesButton = document.querySelector("#load-capsules-button");
+      const capsuleList = document.querySelector("#capsule-list");
       const output = document.querySelector("#response-output");
       const tokenState = document.querySelector("#token-state");
 
@@ -268,6 +364,95 @@
             error: text || "Response was not valid JSON.",
           };
         }
+      };
+
+      const renderCapsuleCard = (capsule) => {
+        const card = document.createElement("div");
+        card.className = "capsule-card";
+
+        const title = document.createElement("h3");
+        title.textContent = capsule.title || "Untitled Capsule";
+
+        const unlockDateElement = document.createElement("p");
+        unlockDateElement.className = "capsule-date";
+
+        if (!capsule.revealAt) {
+          unlockDateElement.textContent = "Date not set";
+        } else {
+          const unlockDate = new Date(capsule.revealAt);
+          const now = new Date();
+          const formattedDate = unlockDate.toLocaleString();
+
+          if (unlockDate <= now) {
+            unlockDateElement.textContent = `🔓 Unlocked! (${formattedDate})`;
+            unlockDateElement.style.color = "#10b981";
+            unlockDateElement.style.fontWeight = "bold";
+          } else {
+            unlockDateElement.textContent = `🔒 Unlocks: ${formattedDate}`;
+            unlockDateElement.style.color = "#6b7280";
+          }
+        }
+
+        const content = document.createElement("p");
+        content.textContent = capsule.content || "";
+
+        const image = document.createElement("img");
+
+        if (capsule.imageUrl) {
+          image.src = capsule.imageUrl;
+          image.alt = capsule.title || "Time capsule memory";
+          image.style.maxWidth = "200px";
+          image.style.borderRadius = "8px";
+          image.style.display = "block";
+          image.style.marginTop = "12px";
+        }
+
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.textContent = "Open Capsule";
+
+        openButton.addEventListener("click", async () => {
+          const token = localStorage.getItem("jwt_token");
+
+          if (token === null) {
+            showOutput({
+              success: false,
+              error: "Please log in to open this capsule.",
+            });
+            return;
+          }
+
+          openButton.disabled = true;
+          showOutput("Opening capsule...");
+
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/v1/capsules/${capsule.id}`, {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            const data = await parseJsonResponse(response);
+            showOutput(data);
+          } catch (error) {
+            showOutput({
+              success: false,
+              error: error instanceof Error ? error.message : "Request failed",
+            });
+          } finally {
+            openButton.disabled = false;
+          }
+        });
+
+        card.append(title, unlockDateElement, content);
+
+        if (capsule.imageUrl) {
+          card.append(image);
+        }
+
+        card.append(openButton);
+        return card;
       };
 
       registrationForm.addEventListener("submit", async (event) => {
@@ -381,6 +566,113 @@
         localStorage.removeItem("jwt_token");
         updateTokenState();
         showOutput("Logged out successfully. Token removed from storage.");
+      });
+
+      capsuleForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const token = localStorage.getItem("jwt_token");
+
+        if (token === null) {
+          showOutput({
+            success: false,
+            error: "Error: You must be logged in to create a capsule.",
+          });
+          return;
+        }
+
+        const button = capsuleForm.querySelector("button");
+        const fileInput = document.querySelector("#capsule-image");
+        const formData = new FormData();
+
+        formData.append("title", capsuleForm.title.value);
+        formData.append("content", capsuleForm.content.value);
+        formData.append("revealAt", new Date(capsuleForm.unlockDate.value).toISOString());
+
+        if (fileInput.files[0]) {
+          formData.append("image", fileInput.files[0]);
+        }
+
+        button.disabled = true;
+        showOutput("Sealing capsule...");
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/v1/capsules`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+          });
+
+          const data = await parseJsonResponse(response);
+          showOutput(data);
+        } catch (error) {
+          showOutput({
+            success: false,
+            error: error instanceof Error ? error.message : "Request failed",
+          });
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      loadCapsulesButton.addEventListener("click", async () => {
+        const token = localStorage.getItem("jwt_token");
+
+        if (token === null) {
+          const message = "Please log in to view your capsules.";
+          capsuleList.textContent = message;
+          showOutput({
+            success: false,
+            error: message,
+          });
+          return;
+        }
+
+        loadCapsulesButton.disabled = true;
+        capsuleList.textContent = "Loading capsules...";
+        showOutput("Loading capsules...");
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/v1/capsules`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          const data = await parseJsonResponse(response);
+          capsuleList.innerHTML = "";
+
+          if (!response.ok || data.success === false) {
+            const message = data.error || "Unable to load capsules.";
+            capsuleList.textContent = message;
+            showOutput(data);
+            return;
+          }
+
+          if (!Array.isArray(data.data) || data.data.length === 0) {
+            capsuleList.textContent = "You haven't sealed any capsules yet!";
+            showOutput(data);
+            return;
+          }
+
+          data.data.forEach((capsule) => {
+            capsuleList.append(renderCapsuleCard(capsule));
+          });
+
+          showOutput(data);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Request failed";
+          capsuleList.textContent = message;
+          showOutput({
+            success: false,
+            error: message,
+          });
+        } finally {
+          loadCapsulesButton.disabled = false;
+        }
       });
 
       updateTokenState();
