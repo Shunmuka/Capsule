@@ -1,6 +1,7 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import '../global.css';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import HomeScreen from '@/screens/HomeScreen';
