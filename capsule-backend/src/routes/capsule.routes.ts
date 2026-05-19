@@ -3,6 +3,7 @@ import {
   createCapsule,
   getCapsuleDetails,
   getCapsules,
+  updateCapsuleCoverImage,
   updateCapsuleImages,
   updateCapsuleRevealDate,
 } from "../controllers/capsule.controller.js";
@@ -14,7 +15,8 @@ const router = Router();
 
 router.get("/", verifyToken, getCapsules);
 router.get("/:id", verifyToken, getCapsuleDetails);
-router.post("/", verifyToken, upload.array("images"), createCapsule);
+router.post("/", verifyToken, upload.fields([{ name: "cover", maxCount: 1 }, { name: "images" }]), createCapsule);
+router.patch("/:id/cover", verifyToken, upload.single("cover"), updateCapsuleCoverImage);
 router.patch("/:id/date", verifyToken, validateCapsuleDateEdit, updateCapsuleRevealDate);
 router.patch("/:id/images", verifyToken, upload.array("images"), updateCapsuleImages);
 
