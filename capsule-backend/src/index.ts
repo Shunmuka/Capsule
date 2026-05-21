@@ -1,6 +1,7 @@
 import express from "express";
 import type { Request, Response } from "express";
 import cors from "cors";
+import friendshipRoutes from "./routes/friendshipRoutes.js";
 import masterRouter from "./routes/index.js";
 
 const app = express();
@@ -17,6 +18,7 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.use("/api/v1", masterRouter);
+app.use("/api/v1", friendshipRoutes);
 
 app.listen(port, () => {
   console.log(`Capsule API server is running on port ${port}`);
