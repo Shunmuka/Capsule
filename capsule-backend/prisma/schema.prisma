@@ -24,6 +24,28 @@ model User {
   ownedCapsules  Capsule[] @relation("CapsuleOwner")
   memberCapsules Capsule[] @relation("CapsuleMembers")
   uploadedPhotos Photo[]   @relation("PhotoUploader")
+
+  sentRequests     Friendship[] @relation("SentFriendships")
+  receivedRequests Friendship[] @relation("ReceivedFriendships")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+model Friendship {
+  id         String           @id @default(uuid())
+  senderId   String
+  receiverId String
+  status     FriendshipStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  sender   User @relation("SentFriendships", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedFriendships", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
 }
 
 model Capsule {
