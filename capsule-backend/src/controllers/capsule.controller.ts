@@ -12,6 +12,10 @@ type CapsuleDateEditBody = {
   validatedCapsule?: ValidatedCapsuleDateEdit;
 };
 
+type InviteMemberBody = {
+  invitedUserId?: string;
+};
+
 type UploadedFiles = Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] } | undefined;
 
 const uploadCapsuleImage = async (userId: string, file: Express.Multer.File, capsuleId?: string) => {
@@ -207,6 +211,88 @@ export const updateCapsuleCoverImage = async (req: Request<{ id: string }>, res:
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : "Failed to update cover image.",
+    });
+  }
+};
+
+export const inviteMemberToCapsule = async (
+  req: Request<{ id: string }, unknown, InviteMemberBody>,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { invitedUserId } = req.body;
+    const userId = req.user!.id;
+
+    if (!invitedUserId) {
+      res.status(400).json({
+        success: false,
+        error: "invitedUserId is required.",
+      });
+      return;
+    }
+
+    const capsule = await prisma.capsule.findFirst({
+      where: {
+        id,
+        ownerId: userId,
+      },
+      include: {
+        members: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!capsule) {
+      res.status(404).json({
+        success: false,
+        error: "Capsule not found",
+      });
+      return;
+    }
+
+    if (capsule.members.some((member) => member.id === invitedUserId)) {
+      res.status(400).json({
+        success: false,
+        error: "This user is already a capsule member.",
+      });
+      return;
+    }
+
+    const updatedCapsule = await prisma.capsule.update({
+      where: {
+        id: capsule.id,
+      },
+      data: {
+        members: {
+          connect: {
+            id: invitedUserId,
+          },
+        },
+      },
+      include: {
+        members: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Member invited to capsule successfully.",
+      data: updatedCapsule,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to invite member to capsule.",
     });
   }
 };
