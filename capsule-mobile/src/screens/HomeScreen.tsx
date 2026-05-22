@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -24,6 +25,7 @@ import {
   getCapsuleDetails,
   getCapsules,
   getCapsulesErrorMessage,
+  updateCapsuleCoverImage,
   updateCapsuleRevealDate,
 } from '@/services/capsulesApi';
 import type { Capsule, CapsuleDetail } from '@/services/capsulesApi';
@@ -169,21 +171,25 @@ type CapsuleCardProps = {
   now: number;
   width: number;
   imageHeight: number;
-  onAddImages: (capsule: Capsule) => void;
-  onEditDate: (capsule: Capsule) => void;
+  onOpenActions: (capsule: Capsule) => void;
   onViewDetails: (capsule: Capsule) => void;
 };
 
-function CapsuleCard({ capsule, now, width, imageHeight, onAddImages, onEditDate, onViewDetails }: CapsuleCardProps) {
+function CapsuleCard({ capsule, now, width, imageHeight, onOpenActions, onViewDetails }: CapsuleCardProps) {
   const countdown = useMemo(() => getCountdownParts(capsule.revealAt, now), [capsule.revealAt, now]);
   const imageUrls = capsule.imageUrls ?? [];
   const coverImageUrl = capsule.coverImageUrl ?? imageUrls[0];
-  const hasUploads = capsule._count.photos > 0;
-  const isRevealed = capsule.isRevealed ?? countdown.isUnlocked;
+  const isUsingFallbackCover = !capsule.coverImageUrl && Boolean(imageUrls[0]);
+  const handleLongPress = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onOpenActions(capsule);
+  };
 
   return (
     <Pressable
       accessibilityRole="button"
+      delayLongPress={320}
+      onLongPress={handleLongPress}
       onPress={() => onViewDetails(capsule)}
       className="overflow-hidden rounded-[18px] border border-zinc-800/80 bg-zinc-900/70 active:border-zinc-600 active:bg-zinc-900"
       style={({ pressed }) => ({
@@ -193,7 +199,7 @@ function CapsuleCard({ capsule, now, width, imageHeight, onAddImages, onEditDate
       {coverImageUrl ? (
         <View>
           <Image
-            blurRadius={countdown.isUnlocked ? 0 : 18}
+            blurRadius={!countdown.isUnlocked && isUsingFallbackCover ? 18 : 0}
             source={{ uri: coverImageUrl }}
             className="w-full bg-zinc-900"
             resizeMode="cover"
@@ -226,9 +232,9 @@ function CapsuleCard({ capsule, now, width, imageHeight, onAddImages, onEditDate
         </View>
       )}
 
-      <View className="p-3">
-        <View className="mb-3 flex-row items-start justify-between gap-2">
-          <View className="flex-1">
+      <View className="p-4">
+        <View className="flex-row items-center justify-between gap-4">
+          <View className="flex-1 pr-1">
             <Text className="font-serif text-lg leading-6 text-zinc-50" numberOfLines={2}>
               {capsule.title}
             </Text>
@@ -237,43 +243,49 @@ function CapsuleCard({ capsule, now, width, imageHeight, onAddImages, onEditDate
             </Text>
           </View>
 
-          <View className="rounded-full border border-zinc-700 px-2 py-1">
-            <Text className="text-[9px] font-semibold uppercase tracking-[1px] text-zinc-300">
-              {isRevealed ? 'Opened Gallery' : 'Locked Countdown'}
-            </Text>
+          <View className="w-[130px] items-center rounded-2xl border border-zinc-800/80 bg-zinc-950/65 px-3 py-3">
+            {countdown.isUnlocked ? (
+              <View className="min-h-[44px] items-center justify-center">
+                <Text className="text-[8px] font-semibold uppercase tracking-[1.5px] text-zinc-500">Open</Text>
+                <Text className="mt-1 text-[11px] font-semibold uppercase tracking-[2px] text-zinc-100">
+                  Ready
+                </Text>
+              </View>
+            ) : (
+              <View className="items-center">
+                <Text className="text-[8px] font-semibold uppercase tracking-[1.5px] text-zinc-500">Opens In</Text>
+                <View className="mt-1.5 flex-row items-center justify-center">
+                  <Text className="font-mono text-[17px] font-semibold leading-5 text-zinc-50">
+                    {countdown.days}
+                  </Text>
+                  <Text className="px-0.5 font-mono text-sm font-semibold leading-5 text-zinc-500">:</Text>
+                  <Text className="font-mono text-[17px] font-semibold leading-5 text-zinc-50">
+                    {countdown.hours}
+                  </Text>
+                  <Text className="px-0.5 font-mono text-sm font-semibold leading-5 text-zinc-500">:</Text>
+                  <Text className="font-mono text-[17px] font-semibold leading-5 text-zinc-50">
+                    {countdown.minutes}
+                  </Text>
+                </View>
+                <View className="mt-1 flex-row justify-center">
+                  <CompactCountdownUnit label="Days" />
+                  <CompactCountdownUnit label="Hrs" />
+                  <CompactCountdownUnit label="Min" />
+                </View>
+              </View>
+            )}
           </View>
-        </View>
-
-        <View className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-2 py-2">
-          <View className="flex-row items-center justify-between">
-            <CountdownUnit label="D" value={countdown.days} />
-            <CountdownUnit label="H" value={countdown.hours} />
-            <CountdownUnit label="M" value={countdown.minutes} />
-            <CountdownUnit label="S" value={countdown.seconds} />
-          </View>
-        </View>
-
-        <View className="mt-3 gap-2">
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onEditDate(capsule)}
-            className={`h-11 items-center justify-center rounded-xl ${
-              hasUploads ? 'bg-amber-500 active:bg-amber-400' : 'bg-zinc-200 active:bg-zinc-300'
-            }`}>
-            <Text className="text-xs font-bold uppercase tracking-[2px] text-zinc-950">
-              {hasUploads ? 'Extend Countdown Timer' : 'Change Reveal Date'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onAddImages(capsule)}
-            className="h-11 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 active:bg-zinc-800">
-            <Text className="text-xs font-semibold uppercase tracking-[2px] text-zinc-300">Add Images</Text>
-          </Pressable>
         </View>
       </View>
     </Pressable>
+  );
+}
+
+function CompactCountdownUnit({ label }: { label: string }) {
+  return (
+    <View className="w-[34px] items-center">
+      <Text className="text-[7px] font-semibold uppercase tracking-[0.8px] text-zinc-600">{label}</Text>
+    </View>
   );
 }
 
@@ -301,6 +313,13 @@ type AddCapsuleModalProps = {
 };
 
 type AddImagesModalProps = {
+  capsule: Capsule | null;
+  token: string | null;
+  onClose: () => void;
+  onUpdated: () => Promise<void>;
+};
+
+type ChangeCoverModalProps = {
   capsule: Capsule | null;
   token: string | null;
   onClose: () => void;
@@ -997,6 +1016,181 @@ function AddImagesModal({ capsule, token, onClose, onUpdated }: AddImagesModalPr
   );
 }
 
+function ChangeCoverModal({ capsule, token, onClose, onUpdated }: ChangeCoverModalProps) {
+  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const isVisible = Boolean(capsule);
+
+  const resetModal = useCallback(() => {
+    setSelectedImage(null);
+    setErrorMessage('');
+    setSuccessMessage('');
+  }, []);
+
+  const handleClose = () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    resetModal();
+    onClose();
+  };
+
+  const handlePickImage = async () => {
+    setErrorMessage('');
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setErrorMessage('Photo library access is needed to change the cover.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsMultipleSelection: false,
+      mediaTypes: ['images'],
+      quality: 0.9,
+    });
+
+    if (result.canceled || !result.assets[0]) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    setSelectedImage({
+      uri: asset.uri,
+      name: asset.fileName ?? `capsule-cover-${Date.now()}.jpg`,
+      type: asset.mimeType ?? 'image/jpeg',
+      file: asset.file,
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!token) {
+      setErrorMessage('Please log in again before changing the cover.');
+      return;
+    }
+
+    if (!capsule) {
+      setErrorMessage('Choose a capsule before changing its cover.');
+      return;
+    }
+
+    if (!selectedImage) {
+      setErrorMessage('Choose a cover image first.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      await updateCapsuleCoverImage(token, capsule.id, selectedImage);
+      setSuccessMessage('Cover image updated successfully.');
+      await onUpdated();
+      resetModal();
+      onClose();
+    } catch (error) {
+      setErrorMessage(getCapsulesErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal animationType="fade" transparent visible={isVisible} onRequestClose={handleClose}>
+      <View className="flex-1 justify-end bg-black/70">
+        <Pressable className="flex-1" disabled={isSubmitting} onPress={handleClose} />
+
+        <View className="max-h-[86%] rounded-t-[28px] border border-zinc-800 bg-zinc-950">
+          <ScrollView contentContainerClassName="px-5 pb-8 pt-5" showsVerticalScrollIndicator={false}>
+            <View className="mb-5 flex-row items-start justify-between gap-4">
+              <View className="flex-1">
+                <Text className="text-xs uppercase tracking-[4px] text-zinc-500">Cover Image</Text>
+                <Text className="mt-2 font-serif text-3xl text-zinc-50" numberOfLines={2}>
+                  {capsule?.title ?? 'Capsule'}
+                </Text>
+              </View>
+
+              <Pressable
+                accessibilityLabel="Close cover image form"
+                accessibilityRole="button"
+                disabled={isSubmitting}
+                onPress={handleClose}
+                className="h-10 w-10 items-center justify-center rounded-full border border-zinc-800 active:bg-zinc-900">
+                <Text className="text-2xl leading-7 text-zinc-300">x</Text>
+              </Pressable>
+            </View>
+
+            <View className="gap-4">
+              {selectedImage ? (
+                <View className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900">
+                  <Image source={{ uri: selectedImage.uri }} className="h-56 w-full" resizeMode="cover" />
+                  <View className="p-3">
+                    <Text className="text-xs text-zinc-300" numberOfLines={1}>
+                      {selectedImage.name}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isSubmitting}
+                  onPress={handlePickImage}
+                  className="h-32 items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 active:bg-zinc-900">
+                  <Text className="text-sm font-semibold uppercase tracking-[3px] text-zinc-300">
+                    Choose Cover Image
+                  </Text>
+                </Pressable>
+              )}
+
+              {selectedImage ? (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isSubmitting}
+                  onPress={handlePickImage}
+                  className="h-12 items-center justify-center rounded-2xl border border-zinc-700 bg-zinc-950 active:bg-zinc-900">
+                  <Text className="text-xs font-semibold uppercase tracking-[3px] text-zinc-300">
+                    Choose Different Cover
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {errorMessage ? (
+                <View className="rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3">
+                  <Text className="text-sm leading-5 text-red-200">{errorMessage}</Text>
+                </View>
+              ) : null}
+
+              {successMessage ? (
+                <View className="rounded-2xl border border-emerald-900/60 bg-emerald-950/25 px-4 py-3">
+                  <Text className="text-sm leading-5 text-emerald-200">{successMessage}</Text>
+                </View>
+              ) : null}
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={isSubmitting || !selectedImage}
+                onPress={handleSubmit}
+                className={`h-14 items-center justify-center rounded-2xl bg-white ${
+                  isSubmitting || !selectedImage ? 'opacity-50' : 'active:bg-zinc-300'
+                }`}>
+                {isSubmitting ? (
+                  <ActivityIndicator color="#09090b" />
+                ) : (
+                  <Text className="text-base font-bold text-zinc-950">Save Cover Image</Text>
+                )}
+              </Pressable>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 type EditRevealDateModalProps = {
   capsule: Capsule | null;
   token: string | null;
@@ -1008,12 +1202,13 @@ type CapsuleDetailScreenProps = {
   capsuleId: string | null;
   token: string | null;
   now: number;
+  initialViewMode: 'grid' | 'sequential';
   onClose: () => void;
 };
 
-function CapsuleDetailScreen({ capsuleId, token, now, onClose }: CapsuleDetailScreenProps) {
+function CapsuleDetailScreen({ capsuleId, token, now, initialViewMode, onClose }: CapsuleDetailScreenProps) {
   const insets = useSafeAreaInsets();
-  const [viewMode, setViewMode] = useState<'grid' | 'sequential'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'sequential'>(initialViewMode);
   const [capsule, setCapsule] = useState<CapsuleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -1024,6 +1219,7 @@ function CapsuleDetailScreen({ capsuleId, token, now, onClose }: CapsuleDetailSc
   );
   const detailPhotos = capsule?.photos ?? [];
   const detailMembers = capsule?.members ?? [];
+  const isUnlocked = Boolean(capsule?.isRevealed) || Boolean(countdown?.isUnlocked);
 
   useEffect(() => {
     if (!capsuleId || !token) {
@@ -1060,6 +1256,12 @@ function CapsuleDetailScreen({ capsuleId, token, now, onClose }: CapsuleDetailSc
     };
   }, [capsuleId, token]);
 
+  useEffect(() => {
+    if (capsuleId) {
+      setViewMode(initialViewMode);
+    }
+  }, [capsuleId, initialViewMode]);
+
   const uploaderLabel = (uploaderId: string, uploaderName?: string) => {
     const member = detailMembers.find((currentMember) => currentMember.id === uploaderId);
     return uploaderName ?? member?.username ?? 'Someone';
@@ -1071,14 +1273,14 @@ function CapsuleDetailScreen({ capsuleId, token, now, onClose }: CapsuleDetailSc
         <View className="flex-row items-center justify-between border-b border-zinc-900 px-5 py-4">
           <View className="flex-1 pr-4">
             <Text className="text-xs uppercase tracking-[4px] text-zinc-500">
-              {capsule?.isRevealed ? 'Gallery' : 'Countdown'}
+              {isUnlocked ? 'Gallery' : 'Countdown'}
             </Text>
             <Text className="mt-1 font-serif text-3xl text-zinc-50" numberOfLines={1}>
               {capsule?.title ?? 'Capsule'}
             </Text>
           </View>
 
-          {capsule?.isRevealed ? (
+          {isUnlocked ? (
             <View className="mr-3 flex-row rounded-full border border-zinc-800 bg-zinc-950 p-1">
               <Pressable
                 accessibilityRole="button"
@@ -1149,7 +1351,7 @@ function CapsuleDetailScreen({ capsuleId, token, now, onClose }: CapsuleDetailSc
               </View>
             ) : null}
 
-            {capsule.isRevealed ? (
+            {isUnlocked ? (
               <View className={viewMode === 'grid' ? 'flex-row flex-wrap justify-between' : 'gap-6'}>
                 {detailPhotos.map((photo) => (
                   <View
@@ -1215,6 +1417,109 @@ function CapsuleDetailScreen({ capsuleId, token, now, onClose }: CapsuleDetailSc
   );
 }
 
+type CapsuleActionSheetProps = {
+  capsule: Capsule | null;
+  now: number;
+  onClose: () => void;
+  onChangeCover: (capsule: Capsule) => void;
+  onUploadImages: (capsule: Capsule) => void;
+  onUpdateRevealDate: (capsule: Capsule) => void;
+};
+
+type CapsuleAction = {
+  label: string;
+  description: string;
+  onPress: () => void;
+};
+
+function CapsuleActionSheet({
+  capsule,
+  now,
+  onClose,
+  onChangeCover,
+  onUploadImages,
+  onUpdateRevealDate,
+}: CapsuleActionSheetProps) {
+  const isVisible = Boolean(capsule);
+  const isRevealed = capsule
+    ? Boolean(capsule.isRevealed) || getCountdownParts(capsule.revealAt, now).isUnlocked
+    : false;
+  const hasUploads = (capsule?._count.photos ?? 0) > 0;
+
+  const actions: CapsuleAction[] = capsule
+    ? isRevealed
+      ? [
+          {
+            label: 'Change Capsule Cover',
+            description: 'Pick a new public cover image for this capsule.',
+            onPress: () => onChangeCover(capsule),
+          },
+        ]
+      : [
+          {
+            label: 'Upload Images',
+            description: 'Add sealed photos to this capsule.',
+            onPress: () => onUploadImages(capsule),
+          },
+          {
+            label: 'Change Capsule Cover',
+            description: 'Pick a new public cover image for this capsule.',
+            onPress: () => onChangeCover(capsule),
+          },
+          {
+            label: hasUploads ? 'Extend Countdown Timer' : 'Change Reveal Date',
+            description: hasUploads
+              ? 'Move the reveal later without shortening the timer.'
+              : 'Choose when this empty capsule opens.',
+            onPress: () => onUpdateRevealDate(capsule),
+          },
+        ]
+    : [];
+
+  const handleActionPress = (action: CapsuleAction) => {
+    action.onPress();
+    onClose();
+  };
+
+  return (
+    <Modal animationType="slide" transparent visible={isVisible} onRequestClose={onClose}>
+      <View className="flex-1 justify-end bg-black/70">
+        <Pressable className="flex-1" onPress={onClose} />
+        <View className="rounded-t-3xl border border-zinc-800 bg-zinc-950 px-5 pb-8 pt-5">
+          <View className="mb-4">
+            <Text className="text-xs font-semibold uppercase tracking-[4px] text-zinc-500">Capsule Actions</Text>
+            <Text className="mt-2 font-serif text-2xl text-zinc-50" numberOfLines={2}>
+              {capsule?.title ?? 'Capsule'}
+            </Text>
+          </View>
+
+          <View className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+            {actions.map((action, index) => (
+              <View key={action.label}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => handleActionPress(action)}
+                  className="px-4 py-4 active:bg-zinc-900">
+                  <Text className="text-base font-semibold text-zinc-50">{action.label}</Text>
+                  <Text className="mt-1 text-sm leading-5 text-zinc-400">{action.description}</Text>
+                </Pressable>
+                {index < actions.length - 1 ? <View className="h-px bg-zinc-800" /> : null}
+              </View>
+            ))}
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            className="mt-3 h-12 items-center justify-center rounded-2xl border border-zinc-700 bg-zinc-950 active:bg-zinc-900">
+            <Text className="text-sm font-semibold uppercase tracking-[2px] text-zinc-300">Cancel</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function EditRevealDateModal({ capsule, token, onClose, onUpdated }: EditRevealDateModalProps) {
   const [revealAt, setRevealAt] = useState(() => new Date());
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1226,6 +1531,7 @@ function EditRevealDateModal({ capsule, token, onClose, onUpdated }: EditRevealD
     const parsedRevealAt = capsule ? new Date(capsule.revealAt) : new Date();
     return Number.isFinite(parsedRevealAt.getTime()) ? parsedRevealAt : new Date();
   }, [capsule]);
+  const isUnlocked = Boolean(capsule?.isRevealed) || currentRevealAt.getTime() <= Date.now();
   const minimumDate = hasUploads ? currentRevealAt : new Date();
 
   useEffect(() => {
@@ -1255,6 +1561,11 @@ function EditRevealDateModal({ capsule, token, onClose, onUpdated }: EditRevealD
 
     if (!capsule) {
       setErrorMessage('Choose a capsule before updating its reveal date.');
+      return;
+    }
+
+    if (isUnlocked) {
+      setErrorMessage('Unlocked capsules cannot have their reveal date changed.');
       return;
     }
 
@@ -1317,12 +1628,20 @@ function EditRevealDateModal({ capsule, token, onClose, onUpdated }: EditRevealD
             </View>
 
             <View className="gap-4">
-              <RevealDateTimeSelector
-                disabled={isSubmitting}
-                minimumDate={minimumDate}
-                onChange={setRevealAt}
-                value={revealAt}
-              />
+              {isUnlocked ? (
+                <View className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-5">
+                  <Text className="text-sm leading-5 text-zinc-300">
+                    This capsule has already unlocked, so its reveal date can no longer be changed.
+                  </Text>
+                </View>
+              ) : (
+                <RevealDateTimeSelector
+                  disabled={isSubmitting}
+                  minimumDate={minimumDate}
+                  onChange={setRevealAt}
+                  value={revealAt}
+                />
+              )}
 
               {errorMessage ? (
                 <View className="rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3">
@@ -1338,11 +1657,11 @@ function EditRevealDateModal({ capsule, token, onClose, onUpdated }: EditRevealD
 
               <Pressable
                 accessibilityRole="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUnlocked}
                 onPress={handleSubmit}
                 className={`h-14 items-center justify-center rounded-2xl ${
                   hasUploads ? 'bg-amber-500 active:bg-amber-400' : 'bg-zinc-200 active:bg-zinc-300'
-                } ${isSubmitting ? 'opacity-50' : ''}`}>
+                } ${isSubmitting || isUnlocked ? 'opacity-50' : ''}`}>
                 {isSubmitting ? (
                   <ActivityIndicator color="#09090b" />
                 ) : (
@@ -1369,8 +1688,11 @@ export default function HomeScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isAddCapsuleVisible, setIsAddCapsuleVisible] = useState(false);
   const [selectedCapsuleForImages, setSelectedCapsuleForImages] = useState<Capsule | null>(null);
+  const [selectedCapsuleForCover, setSelectedCapsuleForCover] = useState<Capsule | null>(null);
   const [selectedCapsuleForDate, setSelectedCapsuleForDate] = useState<Capsule | null>(null);
+  const [selectedCapsuleForActions, setSelectedCapsuleForActions] = useState<Capsule | null>(null);
   const [selectedCapsuleIdForDetails, setSelectedCapsuleIdForDetails] = useState<string | null>(null);
+  const [detailViewMode, setDetailViewMode] = useState<'grid' | 'sequential'>('grid');
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -1415,6 +1737,11 @@ export default function HomeScreen() {
   const cardWidth = Math.floor(viewportWidth - listPadding * 2);
   const imageHeight = Math.min(280, Math.max(210, cardWidth * 0.62));
 
+  const openCapsuleDetails = useCallback((capsule: Capsule, viewMode: 'grid' | 'sequential' = 'grid') => {
+    setDetailViewMode(viewMode);
+    setSelectedCapsuleIdForDetails(capsule.id);
+  }, []);
+
   const renderCapsule = useCallback(
     ({ item }: { item: Capsule }) => (
       <CapsuleCard
@@ -1422,12 +1749,11 @@ export default function HomeScreen() {
         now={now}
         width={cardWidth}
         imageHeight={imageHeight}
-        onAddImages={setSelectedCapsuleForImages}
-        onEditDate={setSelectedCapsuleForDate}
-        onViewDetails={(capsule) => setSelectedCapsuleIdForDetails(capsule.id)}
+        onOpenActions={setSelectedCapsuleForActions}
+        onViewDetails={openCapsuleDetails}
       />
     ),
-    [cardWidth, imageHeight, now],
+    [cardWidth, imageHeight, now, openCapsuleDetails],
   );
 
   return (
@@ -1505,6 +1831,13 @@ export default function HomeScreen() {
         onUpdated={() => loadCapsules({ refreshing: true })}
       />
 
+      <ChangeCoverModal
+        capsule={selectedCapsuleForCover}
+        token={token}
+        onClose={() => setSelectedCapsuleForCover(null)}
+        onUpdated={() => loadCapsules({ refreshing: true })}
+      />
+
       <EditRevealDateModal
         capsule={selectedCapsuleForDate}
         token={token}
@@ -1512,10 +1845,20 @@ export default function HomeScreen() {
         onUpdated={() => loadCapsules({ refreshing: true })}
       />
 
+      <CapsuleActionSheet
+        capsule={selectedCapsuleForActions}
+        now={now}
+        onClose={() => setSelectedCapsuleForActions(null)}
+        onChangeCover={setSelectedCapsuleForCover}
+        onUploadImages={setSelectedCapsuleForImages}
+        onUpdateRevealDate={setSelectedCapsuleForDate}
+      />
+
       <CapsuleDetailScreen
         capsuleId={selectedCapsuleIdForDetails}
         token={token}
         now={now}
+        initialViewMode={detailViewMode}
         onClose={() => setSelectedCapsuleIdForDetails(null)}
       />
     </SafeAreaView>

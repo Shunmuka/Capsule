@@ -28,6 +28,8 @@ export type CreateCapsulePayload = {
   }>;
 };
 
+export type CapsuleImagePayload = NonNullable<CreateCapsulePayload['images']>[number];
+
 export type CapsuleDetailPhoto = {
   id: string;
   capsuleId: string;
@@ -153,7 +155,7 @@ export async function createCapsule(token: string, payload: CreateCapsulePayload
   return response.data;
 }
 
-export async function addCapsuleImages(token: string, capsuleId: string, images: NonNullable<CreateCapsulePayload['images']>) {
+export async function addCapsuleImages(token: string, capsuleId: string, images: CapsuleImagePayload[]) {
   const formData = new FormData();
 
   images.forEach((image) => {
@@ -161,6 +163,19 @@ export async function addCapsuleImages(token: string, capsuleId: string, images:
   });
 
   const response = await capsulesClient.patch<CapsuleResponse>(`/capsules/${capsuleId}/images`, formData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return response.data;
+}
+
+export async function updateCapsuleCoverImage(token: string, capsuleId: string, image: CapsuleImagePayload) {
+  const formData = new FormData();
+  formData.append('cover', image.file ?? (image as unknown as Blob));
+
+  const response = await capsulesClient.patch<CapsuleResponse>(`/capsules/${capsuleId}/cover`, formData, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

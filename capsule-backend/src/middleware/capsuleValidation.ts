@@ -74,6 +74,15 @@ export const validateCapsuleDateEdit = async (
     }
 
     const uploadedMediaCount = capsule._count.photos + capsule.imageUrls.length;
+    const isUnlocked = capsule.isRevealed || capsule.revealAt.getTime() <= Date.now();
+
+    if (isUnlocked) {
+      res.status(400).json({
+        success: false,
+        error: "Unlocked capsules cannot have their reveal date changed.",
+      });
+      return;
+    }
 
     if (uploadedMediaCount > 0 && nextRevealAt.getTime() < capsule.revealAt.getTime()) {
       res.status(400).json({

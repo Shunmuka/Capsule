@@ -12,38 +12,58 @@ type CapsuleDateEditBody = {
   validatedCapsule?: ValidatedCapsuleDateEdit;
 };
 
+type UploadedFiles = Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] } | undefined;
+
+const uploadCapsuleImage = async (userId: string, file: Express.Multer.File, capsuleId?: string) => {
+  const fileExtension = extname(file.originalname).toLowerCase();
+  const uniqueFileName = capsuleId
+    ? `${userId}/${capsuleId}/${randomUUID()}${fileExtension}`
+    : `${userId}/${randomUUID()}${fileExtension}`;
+
+  const { error } = await supabase.storage
+    .from("capsule-storage")
+    .upload(uniqueFileName, file.buffer, {
+      contentType: file.mimetype,
+    });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { data: publicUrlData } = supabase.storage.from("capsule-storage").getPublicUrl(uniqueFileName);
+  return publicUrlData.publicUrl;
+};
+
+const getUploadedFiles = (files: UploadedFiles, fieldName: string) => {
+  if (!files) {
+    return [];
+  }
+
+  if (Array.isArray(files)) {
+    return fieldName === "images" ? files : [];
+  }
+
+  return files[fieldName] ?? [];
+};
+
 export const createCapsule = async (req: Request, res: Response): Promise<void> => {
   try {
     const { title, revealAt } = req.body;
     const userId = req.user!.id;
     const imageUrls: string[] = [];
-    const files = Array.isArray(req.files) ? req.files : [];
+    const files = getUploadedFiles(req.files, "images");
+    const coverFile = getUploadedFiles(req.files, "cover")[0];
+    const coverImageUrl = coverFile ? await uploadCapsuleImage(userId, coverFile) : null;
 
     for (const file of files) {
-      const fileExtension = extname(file.originalname).toLowerCase();
-      const uniqueFileName = `${userId}/${randomUUID()}${fileExtension}`;
-      const { error } = await supabase.storage
-        .from("capsule-storage")
-        .upload(uniqueFileName, file.buffer, {
-          contentType: file.mimetype,
-        });
-
-      if (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-        });
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage.from("capsule-storage").getPublicUrl(uniqueFileName);
-      imageUrls.push(publicUrlData.publicUrl);
+      imageUrls.push(await uploadCapsuleImage(userId, file));
     }
 
     const newCapsule = await prisma.capsule.create({
       data: {
         title,
         revealAt: new Date(revealAt),
+        coverImageUrl,
         imageUrls,
         ownerId: userId,
       },
@@ -101,24 +121,7 @@ export const updateCapsuleImages = async (req: Request<{ id: string }>, res: Res
     const newImageUrls: string[] = [];
 
     for (const file of files) {
-      const fileExtension = extname(file.originalname).toLowerCase();
-      const uniqueFileName = `${userId}/${id}/${randomUUID()}${fileExtension}`;
-      const { error } = await supabase.storage
-        .from("capsule-storage")
-        .upload(uniqueFileName, file.buffer, {
-          contentType: file.mimetype,
-        });
-
-      if (error) {
-        res.status(500).json({
-          success: false,
-          error: error.message,
-        });
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage.from("capsule-storage").getPublicUrl(uniqueFileName);
-      newImageUrls.push(publicUrlData.publicUrl);
+      newImageUrls.push(await uploadCapsuleImage(userId, file, id));
     }
 
     const updatedCapsule = await prisma.capsule.update({
@@ -146,6 +149,64 @@ export const updateCapsuleImages = async (req: Request<{ id: string }>, res: Res
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : "Failed to add capsule images.",
+    });
+  }
+};
+
+export const updateCapsuleCoverImage = async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        error: "A cover image is required.",
+      });
+      return;
+    }
+
+    const capsule = await prisma.capsule.findFirst({
+      where: {
+        id,
+        ownerId: userId,
+      },
+    });
+
+    if (!capsule) {
+      res.status(404).json({
+        success: false,
+        error: "Capsule not found",
+      });
+      return;
+    }
+
+    const coverImageUrl = await uploadCapsuleImage(userId, req.file, id);
+    const updatedCapsule = await prisma.capsule.update({
+      where: {
+        id: capsule.id,
+      },
+      data: {
+        coverImageUrl,
+      },
+      include: {
+        _count: {
+          select: {
+            photos: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Cover image updated successfully.",
+      data: updatedCapsule,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update cover image.",
     });
   }
 };
@@ -277,7 +338,7 @@ export const getCapsuleDetails = async (req: Request<{ id: string }>, res: Respo
         title: capsule.title,
         revealAt: capsule.revealAt,
         imageUrls: capsule.imageUrls,
-        coverImageUrl: capsule.imageUrls[0] ?? null,
+        coverImageUrl: capsule.coverImageUrl ?? capsule.imageUrls[0] ?? null,
         ownerId: capsule.ownerId,
         members: capsule.members,
         isRevealed,
